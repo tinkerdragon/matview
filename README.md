@@ -121,3 +121,7 @@ matview/app.py         window, tabs, toolbar menus, shortcuts, theme
 ```
 
 The export writes generated scenes and videos under `exports/`.
+
+## License
+
+MIT © 2026 Stanley Chen. See [LICENSE](LICENSE).
