@@ -803,6 +803,9 @@ class Viewport(QOpenGLWidget):
         else:
             self.camera.pan(dx, dy, self.height())
         self._dirty = True
+        # Repaint immediately (Qt coalesces); the 10 ms watchdog alone makes a
+        # fast drag update in coarse steps.
+        self.update()
         self.cameraChanged.emit()
 
     def mouseReleaseEvent(self, event) -> None:
@@ -818,6 +821,7 @@ class Viewport(QOpenGLWidget):
         steps = event.angleDelta().y() / 120.0
         self.camera.zoom(steps)
         self._dirty = True
+        self.update()
         self.cameraChanged.emit()
 
     # --------------------------------------------------------------- helpers

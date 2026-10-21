@@ -476,8 +476,10 @@ class MainWindow(QMainWindow):
                 action.setChecked(checked)
                 action.blockSignals(False)
         if self.viewport.timeline is None:
-            self.fps_label.setText(f"idle · {self.viewport.target_fps:.0f} Hz")
-            self.fps_label.setStyleSheet("color:#6E8299")
+            idle_text = f"idle · {self.viewport.target_fps:.0f} Hz"
+            if self.fps_label.text() != idle_text:
+                self.fps_label.setText(idle_text)
+                self.fps_label.setStyleSheet("color:#6E8299")
 
     def _update_hint(self) -> None:
         if self.viewport.dim == 3:

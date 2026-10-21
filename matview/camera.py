@@ -32,6 +32,7 @@ class Camera:
         self.fov = FOV
         self.ortho = False
         self.ortho_height = 7.5
+        self.top_down = False
         self.near = NEAR
         self.far = FAR
 
@@ -40,12 +41,14 @@ class Camera:
         self.target[:] = 0.0
         if dim == 2:
             self.ortho = True
+            self.top_down = True
             self.ortho_height = 7.5
             self.distance = 30.0
             self.yaw = -math.pi / 2.0
             self.pitch = math.pi / 2.0
         else:
             self.ortho = False
+            self.top_down = False
             self.ortho_height = 7.5
             self.distance = 13.0
             self.yaw = math.radians(-56.0)
@@ -60,7 +63,12 @@ class Camera:
 
     def basis(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         forward = _normalize(self.target - self.eye())
-        up_hint = np.array([0.0, 1.0, 0.0]) if abs(forward[2]) > 0.999 else np.array([0.0, 0.0, 1.0])
+        # A fixed world-up per space keeps the view continuous through the whole
+        # orbit. The old threshold on forward.z flipped between z-up and y-up at
+        # ~87.4 degrees pitch, producing a sudden 180 degree roll.
+        up_hint = (
+            np.array([0.0, 1.0, 0.0]) if self.top_down else np.array([0.0, 0.0, 1.0])
+        )
         right = _normalize(np.cross(forward, up_hint))
         up = np.cross(right, forward)
         return right, up, forward
@@ -125,7 +133,8 @@ class Camera:
         if name == "iso":
             self.yaw, self.pitch = math.radians(-56.0), math.radians(26.0)
         elif name == "top":
-            self.yaw, self.pitch = -math.pi / 2.0, math.pi / 2.0 - 0.001
+            # 3D stays on the stable z-up basis, so stop just short of the pole.
+            self.yaw, self.pitch = -math.pi / 2.0, math.pi / 2.0 - 0.02
         elif name == "front":
             self.yaw, self.pitch = -math.pi / 2.0, 0.0
         elif name == "right":
