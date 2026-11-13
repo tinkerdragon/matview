@@ -53,6 +53,7 @@ class Viewport(QOpenGLWidget):
         self.setMouseTracking(False)
         self.setCursor(Qt.CrossCursor)
 
+        self.kind = "transform"
         self.dim = 2
         self.stack: list[np.ndarray] = []
         # State index: 0 is the original (identity) space, k is the space after
@@ -486,6 +487,7 @@ class Viewport(QOpenGLWidget):
         self._render(pixel_w, pixel_h)
         painter.endNativePainting()
         self._draw_labels(painter)
+        self._draw_overlays(painter)
         painter.end()
 
         self._frames += 1
@@ -579,10 +581,18 @@ class Viewport(QOpenGLWidget):
         tri.float("u_lit", 1.0 if depth else 0.0)
         self._head_batch.draw()
 
+        self._render_extra(pixel_w, pixel_h)
+
         self._sample_labels = self._collect_labels(eigen_labels)
 
         if depth:
             GL.glDisable(GL.GL_DEPTH_TEST)
+
+    def _render_extra(self, pixel_w: int, pixel_h: int) -> None:
+        """Hook for alternate scene layers (the Ax=b plane renderer)."""
+
+    def _draw_overlays(self, painter: QPainter) -> None:
+        """Hook for screen-space overlays drawn after the GL layer."""
 
     def _lines(self, batch, model, width, alpha, tint=(1.0, 1.0, 1.0), count=None) -> None:
         if batch is None or batch.count == 0:

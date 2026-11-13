@@ -43,6 +43,9 @@ python main.py --dim 2 --stack "rot:25;scale:1.8,0.6" --matrix "1,0.7,0,1" --sho
 
 - **2D / 3D spaces** — switch at any time; the state sequence is embedded/truncated
   so transforms survive the switch.
+- **Ax=b plane mode** — a separate 3D tab type that draws each row of `A` as a
+  plane `aᵢ·x = bᵢ` and classifies the intersection: a point, a line, coincident
+  planes, all of R³, or no solution (parallel planes / triangular prism).
 - **Matrix editor** — entries accept numbers or expressions (`sqrt(2)/2`,
   `pi/4`, `2**0.5`, `cos(pi/3)`); trig functions use radians and `^` is accepted
   as a power. Live determinant, transpose, inverse, identity. The pending matrix
@@ -67,28 +70,62 @@ python main.py --dim 2 --stack "rot:25;scale:1.8,0.6" --matrix "1,0.7,0,1" --sho
 - **Animation** — every apply animates along the matrix group geodesic
   (`exp(s log M)`), with exact rotation paths (including 180°) and a linear
   fallback for singular maps. Basis tips leave motion trails.
-- **Multiple render instances** — a tab bar at the bottom left (`+` new, `×`
-  close) holds independent viewports, each with its own space, state stack,
-  camera and display settings. **Sync view** keeps the camera shared across
-  instances (3D viewpoints fully; 2D tabs share pan/zoom).
-- **Top-bar menus** — **Settings** holds all display toggles (grid, ghost grid
-  showing the original space, basis, unit cell, eigenvectors, trails, labels). **Export** holds the Manim
-  quality, Render/Cancel, PNG snapshot and Open-video actions.
-- **Export** — render the current state sequence with Manim (480p/720p/1080p)
-  or save a PNG snapshot of the viewport.
+- **Multiple render instances** — a tab bar at the bottom left (`+` new
+  transform instance, `+ Ax=b` plane instance, `×` close) holds independent
+  viewports, each with its own space, state stack or plane system, camera and
+  display settings. **Sync view** keeps the camera shared across instances
+  (3D viewpoints fully; 2D tabs share pan/zoom).
+- **Top-bar menus** — **Settings** holds all transform display toggles (grid,
+  ghost grid showing the original space, basis, unit cell, eigenvectors, trails,
+  labels); it is disabled in plane tabs. **Export** holds the Manim quality,
+  Render/Cancel, PNG snapshot and Open-video actions.
+- **Export** — render the current state sequence with Manim (480p/720p/1080p,
+  transform tabs only) or save a PNG snapshot of any viewport.
+
+## Ax=b plane mode
+
+Use **+ Ax=b** in the bottom bar to open a separate 3D plane-intersection
+instance. Each row of `A` is a plane; `b` is the right-hand side. The equation
+fields accept the same expressions as the matrix editor, and edits update the
+planes and classification live.
+
+The **Solution** panel reports `det A`, `rank A`, `rank [A|b]`, the minimum
+least-squares residual and the feasible set:
+
+| Intersection | Condition | Display |
+|---|---|---|
+| One point | `rank A = 3` | yellow solution point and coordinates |
+| A line | `rank A = rank [A\|b] = 2` | yellow line through `p + t d` |
+| A plane | `rank A = rank [A\|b] = 1` | coincident planes; the whole plane solves the system |
+| All of R³ | both ranks `0` | `0 = 0` equations; every point solves it |
+| No solution | `rank [A\|b] > rank A` | parallel planes, a triangular prism, or a conflicting zero row |
+
+Presets cover unique, line, coincident, parallel, prism and near-singular
+systems, plus a random full-rank system. Display toggles control the plane
+fills, in-plane grids, normal arrows, intersection marker and labels, and the
+optional spatial lattice. **Fit view to solution** reframes the camera; `R`
+(double-click or **RESET VIEW**) does the same. Camera orbit, pan, zoom,
+orthographic mode and the ISO/TOP/FRONT/RIGHT presets work as in 3D transform
+tabs.
+
+Plane tabs are always 3D: the 2D/3D switch and the transform Settings menu are
+disabled there. **Render MP4** is transform-only; **Save PNG snapshot** works
+for plane tabs.
 
 ## Controls
 
 | Key / input | Action |
 |---|---|
-| `1` / `2` | 2D / 3D |
-| `Enter` (matrix cell) | Apply the pending matrix and jump back to the first cell |
-| `Space` | Replay the full stack from the identity |
-| `Ctrl+Z` | Remove the last state |
-| `R` | Reset camera |
+| `1` / `2` | 2D / 3D (transform tabs only) |
+| `Enter` (matrix cell) | Apply the pending matrix and jump back to the first cell (transform tabs) |
+| `Space` | Replay the full stack from the identity (transform tabs) |
+| `Ctrl+Z` | Remove the last state (transform tabs) |
+| `R` / double-click / RESET VIEW | Reset the camera; in a plane tab, fit the solution |
 | `F` | Orthographic / perspective (3D) |
-| `G` `B` `U` `E` `T` | Grid, basis, unit cell, eigenvectors, trails |
+| `G` `B` `U` `E` `T` | Grid, basis, unit cell, eigenvectors, trails (transform tabs) |
 | Drag / Shift+drag / wheel | Orbit / pan / zoom (2D: pan / zoom) |
+| **+ Ax=b** (bottom bar) | Open a plane-intersection instance |
+| Fit view to solution | Plane tab: reframe the camera on the current solution |
 
 ## Performance
 
@@ -112,15 +149,25 @@ lazily and warmed in the background).
 ```
 main.py                  entry point + CLI state/screenshot helpers
 matview/core.py        pure math: paths, transitions, eigenvalues, presets
+matview/planes.py      Ax=b classification, plane records, formatting
 matview/camera.py      orbit camera, perspective/orthographic projection
 matview/gl.py          shaders, screen-space thick lines, batched meshes
 matview/viewport.py    live renderer, animation timeline, interaction
+matview/plane_viewport.py  plane fills, intersection line/point, plane labels
 matview/controls.py    matrix editor, presets, states, vectors
+matview/plane_ui.py    Ax=b equation editor, solution panel, plane presets
 matview/export.py      Manim scene generation + QProcess render
 matview/app.py         window, tabs, toolbar menus, shortcuts, theme
+tests/test_planes.py   classification invariants
 ```
 
 The export writes generated scenes and videos under `exports/`.
+
+Run the plane classification tests with:
+
+```bat
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
 
 ## License
 

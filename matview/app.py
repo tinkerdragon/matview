@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
 
 from .controls import ControlPanel
 from .export import ManimExporter, build_payload
+from .plane_ui import PlanePanel
+from .plane_viewport import PlaneViewport
 from .viewport import Viewport
 
 DISPLAY_FLAGS = [
@@ -119,8 +121,9 @@ class MainWindow(QMainWindow):
 
         self._quality = "m"
         self._last_video: str | None = None
-        self._sessions: list[tuple[QWidget, Viewport, ControlPanel]] = []
+        self._sessions: list[tuple[QWidget, Viewport, QWidget]] = []
         self._session_counter = 0
+        self._planes_counter = 0
         self._ready = False
         self._sync_view = False
         self.exporter = ManimExporter(self)
@@ -144,6 +147,11 @@ class MainWindow(QMainWindow):
         new_button.setToolTip("New render instance")
         new_button.clicked.connect(lambda: self._new_session())
         bottom_layout.addWidget(new_button)
+        planes_button = QToolButton()
+        planes_button.setText("+ Ax=b")
+        planes_button.setToolTip("New plane-intersection instance (Ax=b)")
+        planes_button.clicked.connect(lambda: self._new_session("planes"))
+        bottom_layout.addWidget(planes_button)
         close_button = QToolButton()
         close_button.setText("×")
         close_button.setToolTip("Close this render instance")
@@ -180,9 +188,17 @@ class MainWindow(QMainWindow):
         self._update_hint()
 
     # --------------------------------------------------------------- sessions
-    def _new_session(self) -> None:
-        viewport = Viewport()
-        panel = ControlPanel(viewport)
+    def _new_session(self, kind: str = "transform") -> None:
+        if kind == "planes":
+            viewport = PlaneViewport()
+            panel = PlanePanel(viewport)
+            self._planes_counter += 1
+            label = f"Ax=b {self._planes_counter}"
+        else:
+            viewport = Viewport()
+            panel = ControlPanel(viewport)
+            self._session_counter += 1
+            label = f"Space {self._session_counter}"
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(panel)
@@ -198,8 +214,7 @@ class MainWindow(QMainWindow):
 
         self._sessions.append((container, viewport, panel))
         self.stack.addWidget(container)
-        self._session_counter += 1
-        self.tabs.addTab(f"Space {self._session_counter}")
+        self.tabs.addTab(label)
 
         viewport.statusMessage.connect(self._session_status)
         viewport.fpsChanged.connect(self._session_fps)
@@ -213,7 +228,7 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(index)
         self._switch_session(index)
         if self._ready:
-            self.statusBar().showMessage(f"New render instance · Space {self._session_counter}", 2500)
+            self.statusBar().showMessage(f"New render instance · {label}", 2500)
 
     def _switch_session(self, index: int) -> None:
         if not (0 <= index < len(self._sessions)):
@@ -227,7 +242,10 @@ class MainWindow(QMainWindow):
         self.panel = panel
         if not self._ready:
             return
-        self.mode_2d.setChecked(viewport.dim == 2)
+        transform = getattr(viewport, "kind", "transform") == "transform"
+        self.mode_2d.setEnabled(transform)
+        self.mode_3d.setEnabled(transform)
+        self.mode_2d.setChecked(transform and viewport.dim == 2)
         self.mode_3d.setChecked(viewport.dim == 3)
         self._sync_toolbar()
         self._update_hint()
@@ -356,7 +374,7 @@ class MainWindow(QMainWindow):
         self.reset_button = QToolButton()
         self.reset_button.setText("RESET VIEW")
         self.reset_button.setToolTip("Reset camera (R)")
-        self.reset_button.clicked.connect(self.viewport.reset_camera)
+        self.reset_button.clicked.connect(lambda: self.viewport.reset_camera())
         toolbar.addWidget(self.reset_button)
 
         toolbar.addSeparator()
@@ -364,7 +382,7 @@ class MainWindow(QMainWindow):
         self.ortho_button.setText("ORTHO")
         self.ortho_button.setCheckable(True)
         self.ortho_button.setToolTip("Toggle orthographic / perspective projection (F)")
-        self.ortho_button.clicked.connect(self.viewport.toggle_projection)
+        self.ortho_button.clicked.connect(lambda: self.viewport.toggle_projection())
         toolbar.addWidget(self.ortho_button)
 
         toolbar.addSeparator()
@@ -435,12 +453,12 @@ class MainWindow(QMainWindow):
         bindings = [
             ("1", lambda: self.set_mode(2)),
             ("2", lambda: self.set_mode(3)),
-            ("Return", self.panel.apply_pending),
-            ("Enter", self.panel.apply_pending),
-            ("Space", self.viewport.replay),
-            ("Ctrl+Z", lambda: self.viewport.remove_step(len(self.viewport.stack))),
-            ("R", self.viewport.reset_camera),
-            ("F", self.viewport.toggle_projection),
+            ("Return", self._apply_pending),
+            ("Enter", self._apply_pending),
+            ("Space", self._replay),
+            ("Ctrl+Z", self._undo),
+            ("R", lambda: self.viewport.reset_camera()),
+            ("F", lambda: self.viewport.toggle_projection()),
             ("G", lambda: self._toggle_flag("grid")),
             ("B", lambda: self._toggle_flag("basis")),
             ("U", lambda: self._toggle_flag("unit")),
@@ -453,8 +471,23 @@ class MainWindow(QMainWindow):
             shortcut.activated.connect(slot)
             self._shortcuts.append(shortcut)
 
+    def _apply_pending(self) -> None:
+        apply = getattr(self.panel, "apply_pending", None)
+        if apply is not None:
+            apply()
+
+    def _replay(self) -> None:
+        if getattr(self.viewport, "kind", "transform") == "transform":
+            self.viewport.replay()
+
+    def _undo(self) -> None:
+        if getattr(self.viewport, "kind", "transform") == "transform":
+            self.viewport.remove_step(len(self.viewport.stack))
+
     # ------------------------------------------------------------------ state
     def set_mode(self, dim: int) -> None:
+        if getattr(self.viewport, "kind", "transform") != "transform":
+            return
         self.mode_2d.setChecked(dim == 2)
         self.mode_3d.setChecked(dim == 3)
         self.viewport.set_dim(dim)
@@ -464,17 +497,23 @@ class MainWindow(QMainWindow):
     def _sync_toolbar(self) -> None:
         if not self._ready:
             return
+        transform = getattr(self.viewport, "kind", "transform") == "transform"
         three = self.viewport.dim == 3
+        self.mode_2d.setEnabled(transform)
+        self.mode_3d.setEnabled(transform)
+        self.settings_button.setEnabled(transform)
+        self.render_action.setEnabled(transform and not self.exporter.busy())
         for button in self.camera_buttons.values():
             button.setEnabled(three)
         self.ortho_button.setEnabled(three)
         self.ortho_button.setChecked(self.viewport.camera.ortho)
-        for key, action in getattr(self, "flag_actions", {}).items():
-            checked = bool(self.viewport.flags.get(key, False))
-            if action.isChecked() != checked:
-                action.blockSignals(True)
-                action.setChecked(checked)
-                action.blockSignals(False)
+        if transform:
+            for key, action in getattr(self, "flag_actions", {}).items():
+                checked = bool(self.viewport.flags.get(key, False))
+                if action.isChecked() != checked:
+                    action.blockSignals(True)
+                    action.setChecked(checked)
+                    action.blockSignals(False)
         if self.viewport.timeline is None:
             idle_text = f"idle · {self.viewport.target_fps:.0f} Hz"
             if self.fps_label.text() != idle_text:
@@ -482,7 +521,9 @@ class MainWindow(QMainWindow):
                 self.fps_label.setStyleSheet("color:#6E8299")
 
     def _update_hint(self) -> None:
-        if self.viewport.dim == 3:
+        if getattr(self.viewport, "kind", "transform") == "planes":
+            text = "Drag orbit  ·  Shift+drag pan  ·  Wheel zoom  ·  Edit A and b  ·  Fit view"
+        elif self.viewport.dim == 3:
             text = "Drag orbit  ·  Shift+drag pan  ·  Wheel zoom  ·  Double-click reset"
         else:
             text = "Drag pan  ·  Wheel zoom  ·  Double-click reset"
@@ -497,6 +538,8 @@ class MainWindow(QMainWindow):
             action.blockSignals(False)
 
     def _toggle_flag(self, name: str) -> None:
+        if getattr(self.viewport, "kind", "transform") != "transform":
+            return
         self._set_flag(name, not self.viewport.flags.get(name, False))
 
     def _set_quality(self, key: str) -> None:
@@ -507,6 +550,9 @@ class MainWindow(QMainWindow):
             action.blockSignals(False)
 
     def _start_export(self) -> None:
+        if getattr(self.viewport, "kind", "transform") != "transform":
+            self._show_status("MP4 export is available in transform tabs; use Save PNG snapshot here.")
+            return
         if self.exporter.busy():
             return
         payload = build_payload(self.viewport)
@@ -528,7 +574,10 @@ class MainWindow(QMainWindow):
             self._show_status(line[-160:])
 
     def _on_export_finished(self, ok: bool, path: str) -> None:
-        self.render_action.setEnabled(True)
+        self.render_action.setEnabled(
+            getattr(self.viewport, "kind", "transform") == "transform"
+            and not self.exporter.busy()
+        )
         self.cancel_action.setEnabled(False)
         if ok:
             self._last_video = path
