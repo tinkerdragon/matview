@@ -5,3 +5,6 @@ __pycache__/
 exports/
 shots/
 *.log
+build/
+dist/
+*.spec

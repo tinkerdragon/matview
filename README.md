@@ -39,6 +39,48 @@ python main.py --dim 2 --stack "rot:25;scale:1.8,0.6" --matrix "1,0.7,0,1" --sho
 `--stack` accepts `rot:30`, `rotx:45`, `scale:2,0.5`, `shear:1`,
 `reflect:x`, `project:y`, `rand`, `eye`, or raw row-major entries.
 
+## Standalone Windows app
+
+Matview can be shipped like a normal portable Windows app: a windowed app
+folder, its own icon, and a per-user Start Menu shortcut so Windows Search
+finds it. No installer or administrator rights are required.
+
+Build from the repository:
+
+```powershell
+.venv\Scripts\python.exe -m pip install pyinstaller
+.venv\Scripts\pyinstaller.exe --noconfirm --clean --onedir --windowed `
+  --name Matview --icon assets\matview.ico `
+  --version-file packaging\version_info.txt `
+  --add-data "assets\matview.ico;assets" `
+  --hidden-import scipy.linalg --collect-submodules OpenGL main.py
+```
+
+The result is `dist\Matview\Matview.exe`; keep the whole `dist\Matview`
+folder together. Register it for the current user so it shows up in the Start
+Menu and Windows Search:
+
+```powershell
+$ws = New-Object -ComObject WScript.Shell
+$lnk = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Matview.lnk"
+$s = $ws.CreateShortcut($lnk)
+$s.TargetPath = (Resolve-Path "dist\Matview\Matview.exe").Path
+$s.WorkingDirectory = (Resolve-Path "dist\Matview").Path
+$s.IconLocation = "$($s.TargetPath),0"
+$s.Description = "Live 2D/3D matrix and Ax=b plane visualizer"
+$s.Save()
+```
+
+Type `Matview` in the Start Menu search to launch it. The executable carries
+its own icon and sets an AppUserModelID so it groups under Matview on the
+taskbar. The app is portable: delete the shortcut to remove the Start Menu
+entry; no uninstaller is added, matching the reference ClickDeck setup.
+
+In a frozen build, live rendering and PNG snapshots are self-contained. MP4
+export uses the repository's `.venv` (Python + Manim) when the app sits in
+`dist\Matview\`; if that source environment is absent, the app reports that
+MP4 export needs the development environment.
+
 ## Features
 
 - **2D / 3D spaces** — switch at any time; the state sequence is embedded/truncated
@@ -148,6 +190,9 @@ lazily and warmed in the background).
 
 ```
 main.py                  entry point + CLI state/screenshot helpers
+assets/matview.ico      Windows application icon
+tools/make_icon.py      icon generator (development helper, needs Pillow)
+packaging/version_info.txt  Windows EXE version resource
 matview/core.py        pure math: paths, transitions, eigenvalues, presets
 matview/planes.py      Ax=b classification, plane records, formatting
 matview/camera.py      orbit camera, perspective/orthographic projection

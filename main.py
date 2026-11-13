@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QFont, QPalette, QColor, QSurfaceFormat
+from PySide6.QtGui import QColor, QFont, QIcon, QPalette, QSurfaceFormat
 from PySide6.QtWidgets import QApplication
 
 from matview import core
@@ -42,6 +43,25 @@ def _palette() -> QPalette:
     palette.setColor(QPalette.Disabled, QPalette.Text, QColor("#4E5D70"))
     palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor("#4E5D70"))
     return palette
+
+
+def _asset_path(name: str) -> Path:
+    """Resolve bundled assets in the source tree and in a PyInstaller build."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base / "assets" / name
+
+
+def _configure_windows_identity() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "Tinkerdragon.Matview"
+        )
+    except Exception:
+        pass
 
 
 def _matrix_from_text(text: str, dim: int) -> np.ndarray:
@@ -126,8 +146,12 @@ def main(argv: list[str] | None = None) -> int:
     args, qt_args = parser.parse_known_args(argv)
 
     _configure_surface()
+    _configure_windows_identity()
     app = QApplication([sys.argv[0], *qt_args])
     app.setApplicationName("Matview")
+    icon_path = _asset_path("matview.ico")
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     app.setStyle("Fusion")
     app.setPalette(_palette())
     app.setFont(QFont("Segoe UI", 9))
