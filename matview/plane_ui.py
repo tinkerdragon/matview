@@ -141,7 +141,7 @@ class PlanePanel(QWidget):
 
     def _field(self, grid: QGridLayout, row: int, column: int) -> MatrixField:
         field = MatrixField()
-        field.setFixedWidth(52)
+        field.setFixedWidth(64)
         field.setMinimumHeight(26)
         field.textChanged.connect(self._changed)
         grid.addWidget(field, row, column)
@@ -181,7 +181,8 @@ class PlanePanel(QWidget):
             self.preset_combo.addItem(label, key)
         self.preset_combo.currentIndexChanged.connect(self._preset_changed)
         layout.addWidget(self.preset_combo)
-        random_button = QPushButton("Random full-rank system")
+        random_button = QPushButton("Randomize selected preset")
+        random_button.setToolTip("Generate another system of the selected preset family")
         random_button.clicked.connect(lambda: self._random())
         layout.addWidget(random_button)
 
@@ -193,6 +194,7 @@ class PlanePanel(QWidget):
             ("plane_grid", "Plane grids"),
             ("normals", "Normals"),
             ("intersection", "Intersection"),
+            ("pairwise", "Pairwise intersection traces"),
             ("labels", "Labels"),
             ("grid", "Spatial grid"),
         ):
@@ -203,6 +205,10 @@ class PlanePanel(QWidget):
             )
             layout.addWidget(box_check)
             self.flag_boxes[key] = box_check
+        trace_note = QLabel("Dashed traces show where each pair of planes meets.")
+        trace_note.setObjectName("muted")
+        trace_note.setWordWrap(True)
+        layout.addWidget(trace_note)
         fit = QPushButton("Fit view to solution")
         fit.clicked.connect(lambda: self.viewport.fit_view())
         layout.addWidget(fit)
@@ -233,7 +239,7 @@ class PlanePanel(QWidget):
     def _format(value: float) -> str:
         if abs(value) < 5e-7:
             return "0"
-        return f"{value:.6g}"
+        return f"{value:.8g}"
 
     def _changed(self) -> None:
         if self._syncing:
@@ -355,14 +361,10 @@ class PlanePanel(QWidget):
         self._write_system(system[0], system[1], fit=True)
 
     def _random(self) -> None:
-        rng = np.random.default_rng()
-        A = np.eye(3)
-        b = np.zeros(3)
-        for _ in range(50):
-            candidate = rng.integers(-3, 4, size=(3, 3)).astype(float)
-            if abs(float(np.linalg.det(candidate))) >= 1.0:
-                A = candidate
-                b = rng.integers(-4, 5, size=3).astype(float)
-                break
+        key = self.preset_combo.currentData()
+        A, b = planes.random_system(str(key or "unique"))
         self._write_system(A, b, fit=True)
+        self.viewport.statusMessage.emit(
+            f"Randomized {self.preset_combo.currentText().lower()}."
+        )
 

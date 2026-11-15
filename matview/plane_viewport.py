@@ -39,6 +39,7 @@ class PlaneViewport(Viewport):
                 "plane_grid": True,
                 "normals": False,
                 "intersection": True,
+                "pairwise": True,
             }
         )
         self.R = PLANE_HALF_EXTENT
@@ -56,6 +57,7 @@ class PlaneViewport(Viewport):
         self._normal_line_data = np.zeros((0, gl.LINE_STRIDE), dtype=np.float32)
         self._normal_head_data = np.zeros((0, gl.TRI_STRIDE), dtype=np.float32)
         self._intersection_line_data = np.zeros((0, gl.LINE_STRIDE), dtype=np.float32)
+        self._pairwise_data = np.zeros((0, gl.LINE_STRIDE), dtype=np.float32)
 
         self._plane_fill_batch: gl.TriBatch | None = None
         self._plane_border_batch: gl.LineBatch | None = None
@@ -63,6 +65,7 @@ class PlaneViewport(Viewport):
         self._normal_line_batch: gl.LineBatch | None = None
         self._normal_head_batch: gl.TriBatch | None = None
         self._intersection_line_batch: gl.LineBatch | None = None
+        self._pairwise_batch: gl.LineBatch | None = None
 
         self._rebuild_plane_geometry()
         self.camera.target[:] = self.focus_point()
@@ -208,6 +211,29 @@ class PlaneViewport(Viewport):
             np.vstack(heads) if heads else np.zeros((0, gl.TRI_STRIDE), dtype=np.float32)
         )
 
+        # Dashed traces for every pair of planes that actually meets in a line.
+        pair_starts: list[np.ndarray] = []
+        pair_ends: list[np.ndarray] = []
+        pair_colors: list[np.ndarray] = []
+        focus = self.focus_point()
+        for pair in planes.pairwise_intersections(self.solution.planes):
+            direction = pair.direction
+            base = pair.point + direction * float(np.dot(focus - pair.point, direction))
+            half = self.R * 1.35
+            dash, gap = 0.36, 0.24
+            t = -half
+            color = gl.hex_rgba(pair.color, 0.82)
+            while t < half:
+                end = min(half, t + dash)
+                if end - t > 1e-4:
+                    pair_starts.append(base + direction * t)
+                    pair_ends.append(base + direction * end)
+                    pair_colors.append(color)
+                t += dash + gap
+        self._pairwise_data = self._concat_lines(
+            pair_starts, pair_ends, pair_colors
+        )
+
         solution = self.solution
         if (
             self.flags.get("intersection", True)
@@ -240,6 +266,7 @@ class PlaneViewport(Viewport):
         self._normal_line_batch = gl.LineBatch()
         self._normal_head_batch = gl.TriBatch()
         self._intersection_line_batch = gl.LineBatch()
+        self._pairwise_batch = gl.LineBatch()
         self._plane_dirty = True
         self._upload_plane_geometry()
 
@@ -251,6 +278,7 @@ class PlaneViewport(Viewport):
         self._normal_line_batch.upload(self._normal_line_data)
         self._normal_head_batch.upload(self._normal_head_data)
         self._intersection_line_batch.upload(self._intersection_line_data)
+        self._pairwise_batch.upload(self._pairwise_data)
         self._plane_dirty = False
 
     def _sorted_fill_data(self) -> np.ndarray:
@@ -283,6 +311,9 @@ class PlaneViewport(Viewport):
             if self.flags.get("plane_grid", True):
                 self._lines(self._plane_grid_batch, identity, 1.0, 1.0)
             self._lines(self._plane_border_batch, identity, 1.35, 1.0)
+
+        if self.flags.get("pairwise", True):
+            self._lines(self._pairwise_batch, identity, 1.7, 1.0)
 
         if self.flags.get("normals", False):
             self._lines(self._normal_line_batch, identity, 1.6, 1.0)

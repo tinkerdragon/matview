@@ -6,7 +6,7 @@ import unittest
 
 import numpy as np
 
-from matview.planes import classify, plane_containing
+from matview.planes import classify, pairwise_intersections, plane_containing, random_system
 
 TOL = 1e-6
 
@@ -105,6 +105,82 @@ class PlaneClassificationTests(unittest.TestCase):
         self.assertEqual(solution.kind, "unique")
         self.assertTrue(solution.ill_conditioned)
         np.testing.assert_allclose(solution.point, [1.0, 1.0, 1.0], atol=1e-4)
+
+    def test_pairwise_lines_for_unique_system(self):
+        A = np.array([[2.0, 1.0, 1.0], [1.0, 3.0, 2.0], [1.0, 0.0, 1.0]])
+        b = np.array([4.0, 5.0, 3.0])
+        solution = classify(A, b)
+        pairs = pairwise_intersections(solution.planes)
+        self.assertEqual(len(pairs), 3)
+        by_index = {plane.index: plane for plane in solution.planes}
+        for pair in pairs:
+            self.assertIn(pair.first, by_index)
+            self.assertIn(pair.second, by_index)
+            for index in (pair.first, pair.second):
+                plane = by_index[index]
+                self.assertAlmostEqual(
+                    float(np.dot(plane.unit_normal, pair.point)),
+                    plane.distance,
+                    places=6,
+                )
+                self.assertAlmostEqual(
+                    float(np.dot(plane.unit_normal, pair.direction)), 0.0, places=6
+                )
+            delta = solution.point - pair.point
+            off_line = delta - np.dot(delta, pair.direction) * pair.direction
+            self.assertLess(float(np.linalg.norm(off_line)), 1e-6)
+
+    def test_pairwise_lines_skip_parallel_and_coincident(self):
+        parallel = classify(
+            np.array([[1.0, 0.0, 0.0]] * 3), np.array([1.0, 2.0, 3.0])
+        )
+        self.assertEqual(pairwise_intersections(parallel.planes), [])
+        coincident = classify(
+            np.array([[1.0, 1.0, 1.0], [2.0, 2.0, 2.0], [-1.0, -1.0, -1.0]]),
+            np.array([3.0, 6.0, -3.0]),
+        )
+        self.assertEqual(pairwise_intersections(coincident.planes), [])
+
+    def test_pairwise_lines_for_prism(self):
+        solution = classify(
+            np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]]),
+            np.array([0.0, 0.0, 1.0]),
+        )
+        pairs = pairwise_intersections(solution.planes)
+        self.assertEqual(len(pairs), 3)
+        self.assertTrue(all(pair.direction.shape == (3,) for pair in pairs))
+
+    def test_pairwise_lines_with_a_zero_row(self):
+        solution = classify(
+            np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]]),
+            np.array([1.0, 2.0, 0.0]),
+        )
+        pairs = pairwise_intersections(solution.planes)
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual((pairs[0].first, pairs[0].second), (0, 1))
+
+    def test_random_system_matches_each_preset(self):
+        expected = {
+            "unique": "unique",
+            "line": "line",
+            "coincident": "plane",
+            "parallel": "none",
+            "prism": "none",
+            "near": "unique",
+        }
+        for kind, target in expected.items():
+            for seed in range(10):
+                A, b = random_system(kind, np.random.default_rng(seed))
+                solution = classify(A, b)
+                self.assertEqual(
+                    solution.kind, target, f"{kind} seed {seed}: {solution.reason}"
+                )
+                self.assertTrue(np.all(np.isfinite(A)))
+                self.assertTrue(np.all(np.isfinite(b)))
+                if kind == "near":
+                    self.assertTrue(solution.ill_conditioned, f"seed {seed}")
+                if kind == "prism":
+                    self.assertEqual(len(pairwise_intersections(solution.planes)), 3)
 
 
 if __name__ == "__main__":

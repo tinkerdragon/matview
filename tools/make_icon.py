@@ -1,9 +1,8 @@
 """Generate the Matview Windows icon (development helper, needs Pillow).
 
-The mark is matrix brackets around a sheared 2x2 grid with a vector arrow:
-matrix, transformed space and a vector in one simple silhouette.  The 16, 20
-and 24 px frames use a supersampled bracket-and-arrow silhouette so the small
-Start Menu/list icon stays clean.
+Minimal mark: matrix brackets and a vector arrow, nothing else.  The 16, 20
+and 24 px frames are rendered at 4x and downsampled so the small Start Menu and
+list icons stay clean.
 """
 
 from __future__ import annotations
@@ -21,6 +20,9 @@ BG_BOTTOM = (5, 9, 14)
 CYAN = (88, 196, 221)
 YELLOW = (245, 213, 71)
 BORDER = (38, 62, 84)
+
+ORIGIN = (0.300, 0.700)
+TIP = (0.700, 0.300)
 
 
 def _point(size: int, x: float, y: float) -> tuple[int, int]:
@@ -78,11 +80,11 @@ def _draw_arrow(
     head: int,
     half: int,
 ) -> None:
-    origin = (0.315, 0.665)
-    tip = (0.700, 0.315)
+    origin = ORIGIN
+    tip = TIP
     shaft_end = (
-        origin[0] + (tip[0] - origin[0]) * 0.76,
-        origin[1] + (tip[1] - origin[1]) * 0.76,
+        origin[0] + (tip[0] - origin[0]) * 0.72,
+        origin[1] + (tip[1] - origin[1]) * 0.72,
     )
     draw.line(
         [_point(size, *origin), _point(size, *shaft_end)],
@@ -107,7 +109,7 @@ def _draw_arrow(
 
 
 def render(size: int) -> Image.Image:
-    """Detailed frame used at 32 px and above."""
+    """Detailed bracket-and-arrow frame used at 32 px and above."""
     image = _background(size)
     if size >= 64:
         glow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -130,8 +132,8 @@ def render(size: int) -> Image.Image:
                 _rounded_mask(size, int(size * 0.22)),
             ),
         )
-    draw = ImageDraw.Draw(image)
 
+    draw = ImageDraw.Draw(image)
     draw.rounded_rectangle(
         (
             int(size * 0.025),
@@ -145,35 +147,19 @@ def render(size: int) -> Image.Image:
     )
     _draw_brackets(draw, size, detailed=True)
 
-    # A unit square sheared to the right: the visual signature of a linear map.
-    a = (0.315, 0.665)
-    b = (0.500, 0.665)
-    c = (0.675, 0.470)
-    d = (0.490, 0.470)
-    quad = [_point(size, *p) for p in (a, b, c, d)]
-    draw.polygon(quad, fill=(*CYAN, 28))
-    draw.line(
-        quad + [quad[0]],
-        fill=(*CYAN, 180),
-        width=max(1, int(size * 0.008)),
-        joint="curve",
-    )
-    if size >= 48:
-        def mid(p, q):
-            return (p[0] + (q[0] - p[0]) * 0.5, p[1] + (q[1] - p[1]) * 0.5)
-
-        grid = (*CYAN, 90)
-        width = max(1, int(size * 0.004))
-        draw.line(
-            [_point(size, *mid(a, b)), _point(size, *mid(d, c))],
-            fill=grid,
-            width=width,
+    if size >= 64:
+        arrow_glow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        agdraw = ImageDraw.Draw(arrow_glow)
+        agdraw.line(
+            [_point(size, *ORIGIN), _point(size, *TIP)],
+            fill=(*YELLOW, 34),
+            width=max(3, int(size * 0.055)),
         )
-        draw.line(
-            [_point(size, *mid(a, d)), _point(size, *mid(b, c))],
-            fill=grid,
-            width=width,
+        arrow_glow = arrow_glow.filter(
+            ImageFilter.GaussianBlur(max(1, int(size * 0.012)))
         )
+        image = Image.alpha_composite(image, arrow_glow)
+        draw = ImageDraw.Draw(image)
 
     _draw_arrow(
         draw,
@@ -182,12 +168,6 @@ def render(size: int) -> Image.Image:
         head=max(2, int(size * 0.085)),
         half=max(1, int(size * 0.050)),
     )
-    if size >= 48:
-        ox, oy = _point(size, *a)
-        dot = max(1, int(size * 0.010))
-        draw.ellipse(
-            (ox - dot, oy - dot, ox + dot, oy + dot), fill=(235, 246, 255, 240)
-        )
     return image
 
 
@@ -196,7 +176,6 @@ def render_small(target: int, factor: int = 4) -> Image.Image:
     size = target * factor
     image = _background(size)
     draw = ImageDraw.Draw(image)
-    # Small frames drop the outer hairline; at 16 px it only adds a grey ring.
     # Widths are authored in target pixels, then rendered at 4x and downsampled.
     _draw_brackets(
         draw,

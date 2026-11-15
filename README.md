@@ -143,9 +143,11 @@ least-squares residual and the feasible set:
 | No solution | `rank [A\|b] > rank A` | parallel planes, a triangular prism, or a conflicting zero row |
 
 Presets cover unique, line, coincident, parallel, prism and near-singular
-systems, plus a random full-rank system. Display toggles control the plane
-fills, in-plane grids, normal arrows, intersection marker and labels, and the
-optional spatial lattice. **Fit view to solution** reframes the camera; `R`
+systems. **Randomize selected preset** generates another system of whichever
+family is currently selected. The viewport draws dashed pairwise-intersection
+traces wherever two planes meet, and the display toggles control the plane
+fills, in-plane grids, normal arrows, pairwise traces, the all-three
+intersection marker and labels, and the optional spatial lattice. **Fit view to solution** reframes the camera; `R`
 (double-click or **RESET VIEW**) does the same. Camera orbit, pan, zoom,
 orthographic mode and the ISO/TOP/FRONT/RIGHT presets work as in 3D transform
 tabs.
